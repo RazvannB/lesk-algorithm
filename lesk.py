@@ -1,20 +1,58 @@
+from eval import get_instance
 import re
 import itertools
+import os
+import re
+import xml.etree.ElementTree as Et
 from nltk.corpus import wordnet
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 
 
 # Constants
-RELS = ["hyponym", "meronym"]
-PHRASE = "a dog was barking at a tree in the park full of people"
-MYWORD = "park"
-
-RELPAIRS = list(itertools.combinations(RELS, 2))
-POS = None # n, a, v
+RELS = {
+    "n": ["hyponyms", "part_meronyms", "hypernyms", "member_holonyms"],
+    "a": ["similar_tos", "also_sees", "attributes"],
+    "v": ["entailments", "causes", "hyponyms"]
+}
+POS = "n" # n, a, v
+RELPAIRS = list(itertools.combinations(RELS[POS], 2))
 STOPWORDS = stopwords.words('english')
 STEMMER = PorterStemmer()
 WINDOW = 3
+
+CORPUS = "line"
+FILENAME = "line-n.train.xml"
+
+WORDNET_MAP = {
+    'line': {
+        'cord': ['line.n.18'],
+        'division': ['line.n.29'],
+        'formation': ['line.n.03', 'line.n.01'],
+        'phone': ['telephone_line.n.02'],
+        'product': ['line.n.22'],
+        'text': ['note.n.02', 'line.n.05', 'line.n.27']
+    },
+    'hard': {
+        'HARD1': ['difficult.a.01'],
+        'HARD2': ['arduous.s.01'],
+        'HARD3': ['hard.r.07']
+    },
+    'serve': {
+        'SERVE10': ['serve.v.06'],
+        'SERVE2': ['serve.v.01'],
+        'SERVE6': ['service.v.01'],
+        'SERVE12': ['serve.v.02'],
+    },
+    'interest': {
+        'interest_1': ['interest.n.01'],
+        'interest_2': ['interest.n.03'],
+        'interest_3': ['pastime.n.01'],
+        'interest_4': ['sake.n.01'],
+        'interest_5': ['interest.n.05'],
+        'interest_6': ['interest.n.04'],
+    }
+}
 
 
 # Helper functions
@@ -70,16 +108,10 @@ def no_of_words(s):
     return len(s.split())
 
 
-def target_word_index(context=None):
-    if context == None:
-        return PHRASE.split().index(MYWORD)
-    else:
-        return context.index(MYWORD)
+def get_window_of_context(wordArg, phraseArg):
+    phrase = phraseArg.split()
+    target_index = phrase.index(wordArg)
 
-
-def get_window_of_context():
-    phraseArr = PHRASE.split()
-    target_index = target_word_index()
     actual_window_left = WINDOW
     actual_window_right = WINDOW
 
@@ -87,20 +119,16 @@ def get_window_of_context():
         actual_window_left = target_index
         actual_window_right += abs(target_index - WINDOW)
     
-    if target_index + actual_window_right >= len(phraseArr):
-        actual_window_right = len(phraseArr) - target_index - 1
+    if target_index + actual_window_right >= len(phrase):
+        actual_window_right = len(phrase) - target_index - 1
 
     if actual_window_right < WINDOW:
         diff = WINDOW - actual_window_right
         start_index = max(0, target_index - actual_window_left - diff)
         actual_window_left = target_index - start_index
 
-    context = phraseArr[target_index - actual_window_left : target_index + actual_window_right + 1]
+    context = phrase[target_index - actual_window_left : target_index + actual_window_right + 1]
     return [word for word in context if word not in STOPWORDS]
-
-
-def target_word(s):
-    return s == MYWORD
 
 
 def list_senses(context):
@@ -117,14 +145,24 @@ def definitions(synsets):
 
 
 def relation(rel, A):
-    if rel == "hyponym":
+    if rel == "hyponyms":
         return definitions(A.hyponyms())
-    elif rel == "hypernym":
-        return definitions(A.hypernyms())
-    elif rel == "meronym":
+    elif rel == "part_meronyms":
         return definitions(A.part_meronyms())
-    elif rel == "holonym":
+    elif rel == "hypernyms":
+        return definitions(A.hypernyms())
+    elif rel == "member_holonyms":
         return definitions(A.member_holonyms())
+    elif rel == "similar_tos":
+        return definitions(A.similar_tos())
+    elif rel == "also_sees":
+        return definitions(A.also_sees())
+    elif rel == "attributes":
+        return definitions(A.attributes())
+    elif rel == "entailments":
+        return definitions(A.entailments())
+    elif rel == "causes":
+        return definitions(A.causes())
     elif rel == "gloss":
         return [A.definition()]
     elif rel == "example":
@@ -147,16 +185,17 @@ def score(definition1, definition2):
 
 def relatedness(A, B):
     result = 0
+
     for pair in RELPAIRS:
         result += score(relation(pair[0], A), relation(pair[1], B))
         result += score(relation(pair[1], A), relation(pair[0], B))
     return result
 
 
-def scoresense(current_sense):
-    context = get_window_of_context()
+def scoresense(word, phrase, crtSense):
+    context = get_window_of_context(word, phrase)
     senses = list_senses(context)
-    target_index = target_word_index(context)
+    target_index = context.index(word)
 
     result = 0
     for idx, other_senses in enumerate(senses):
@@ -164,23 +203,70 @@ def scoresense(current_sense):
             continue
 
         for sense in other_senses:
-            result += relatedness(current_sense, sense)
+            result += relatedness(crtSense, sense)
 
     return result
 
 
-def main():
-    myword_synsets = synset(MYWORD)
-    print([syn.name() for syn in myword_synsets])
+def predict(word, phrase, filter_function = None):
 
-    scores = [scoresense(sense) for sense in myword_synsets]
+    if filter_function is None:
+        filter_function = lambda x : True
+
+    synsets = list(filter(filter_function, synset(word)))
+
+    scores = [scoresense(word, phrase, sense) for sense in synsets]
     max_score = max(scores)
     max_idx = scores.index(max_score)
 
-    winner = myword_synsets[max_idx]
-    print(winner.name())
-    print(winner.definition())
+    print(synsets)
+
+    winner = synsets[max_idx]
+
+    return winner.name(), winner.definition()
+
+
+def filter_eval(synset):
+    for labelWN, synset_names in WORDNET_MAP[CORPUS].items():
+        if synset.name() in synset_names:
+            return True
+
+    return False
+
+
+def predict_eval(word, phrase):
+    predSynset, _ = predict(word, phrase, filter_eval)
+    print(predSynset)
+
+    for labelWN, synset_names in WORDNET_MAP[CORPUS].items():
+        if predSynset in synset_names:
+            return labelWN
+
+    return None
+
+
+def main_eval():
+    xml_file_name = FILENAME
+    xml_file_path = os.path.join('data_eval', xml_file_name)
+
+    # read xml
+    tree = Et.parse(xml_file_path)
+    root = tree.getroot()
+    lexelt = root[0]
+    
+    instances = [get_instance(instance_el) for instance_el in lexelt]
+    
+    word = instances[1000]["target_word"]
+    label = instances[1000]["senseid"]
+    phrase = instances[1000]["text"]
+
+    pred = predict_eval(word, phrase)
+    print(word)
+    print(phrase)
+    print(pred) 
+    print(label)
+
 
 
 if __name__ == '__main__':
-    main()
+    main_eval()
