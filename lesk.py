@@ -21,9 +21,11 @@ WINDOW = 3
 def remove_non_alphanumeric(s):
     return re.sub(r'\W+ ', ' ', s).lower()
 
+
 def cannot_be_added(s):
     # "neither the first nor the last word is a function word, that is a pronoun, preposition, article or conjunction"
     return s in STOPWORDS
+
 
 def string_matching(first, second):
     result = []
@@ -63,14 +65,17 @@ def string_matching(first, second):
             
     return result
 
+
 def no_of_words(s):
     return len(s.split())
+
 
 def target_word_index(context=None):
     if context == None:
         return PHRASE.split().index(MYWORD)
     else:
         return context.index(MYWORD)
+
 
 def get_window_of_context():
     phraseArr = PHRASE.split()
@@ -93,8 +98,10 @@ def get_window_of_context():
     context = phraseArr[target_index - actual_window_left : target_index + actual_window_right + 1]
     return [word for word in context if word not in STOPWORDS]
 
+
 def target_word(s):
     return s == MYWORD
+
 
 def list_senses(context):
     return [word_senses(word) for word in context]
@@ -104,8 +111,10 @@ def list_senses(context):
 def synset(s, pos=POS):
     return wordnet.synsets(s, pos=pos)
 
+
 def definitions(synsets):
     return " ".join([defin.definition() for defin in synsets])
+
 
 def relation(rel, A):
     if rel == "hyponym":
@@ -123,6 +132,7 @@ def relation(rel, A):
     else:
         return None
 
+
 def word_senses(word):
     return synset(word)
 
@@ -134,12 +144,14 @@ def score(definition1, definition2):
         result += no_of_words(match) ** 2
     return result
 
+
 def relatedness(A, B):
     result = 0
     for pair in RELPAIRS:
         result += score(relation(pair[0], A), relation(pair[1], B))
         result += score(relation(pair[1], A), relation(pair[0], B))
     return result
+
 
 def scoresense(current_sense):
     context = get_window_of_context()
@@ -156,6 +168,7 @@ def scoresense(current_sense):
 
     return result
 
+
 def main():
     myword_synsets = synset(MYWORD)
     print([syn.name() for syn in myword_synsets])
@@ -168,4 +181,6 @@ def main():
     print(winner.name())
     print(winner.definition())
 
-main()
+
+if __name__ == '__main__':
+    main()
