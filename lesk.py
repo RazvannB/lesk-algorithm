@@ -30,12 +30,11 @@ FILENAME = "line-n.train.xml"
 
 WORDNET_MAP = {
     'line': {
-        # 'cord': ['line.n.18'],
+        'cord': ['line.n.18'],
         'division': ['line.n.29'],
         'formation': ['line.n.03', 'line.n.01'],
         'phone': ['telephone_line.n.02'],
         'product': ['line.n.22'],
-        'product': ['merchandise.n.01'],
         'text': ['note.n.02', 'line.n.05', 'line.n.27']
     },
     'hard': {
