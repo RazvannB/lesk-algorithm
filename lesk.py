@@ -13,9 +13,9 @@ from difflib import SequenceMatcher
 
 # Constants
 RELS = {
-    "n": ["hyponyms", "part_meronyms", "hypernyms", "member_holonyms", "definition", "examples"],
-    "a": ["similar_tos", "also_sees", "attributes", "definition", "example"],
-    "v": ["entailments", "causes", "hyponyms", "definition", "example"]
+    "n": ["hyponyms", "part_meronyms"],
+    "a": ["similar_tos", "also_sees", "attributes"],
+    "v": ["entailments", "causes", "hyponyms"]
 }
 POS = "n" # n, a, v
 RELPAIRS = list(itertools.combinations(RELS[POS], 2)) + list(map(lambda rel: (rel, rel), RELS[POS]))
@@ -69,6 +69,8 @@ def tokenize_and_preprocess(phrase):
     # Stem
     # words = [STEMMER.stem(word) for word in words]
 
+    words = [word for word in words if len(word) >= 3]
+
     return words
 
 
@@ -76,7 +78,7 @@ def get_window_of_context(word, phrase):
     # word = STEMMER.stem(word)
     word = word.lower()
     phrase_tokens = tokenize_and_preprocess(phrase)
-    target_index = phrase_tokens.index(word)
+    target_index = phrase_tokens.index(word.lower())
 
     left_window = None
     right_window = None
@@ -196,9 +198,8 @@ def calculate_synset_score(context, word_target, phrase, synset_target):
         if word_target == word:
             continue
 
-        # print("Target word: {}, context word: {}".format(word_target, word))
         # for each synset of a word from context
-        for cword_synset in get_synsets_for_word(word):
+        for cword_synset in get_synsets_for_word(word, POS):
             score += relatedness(synset_target, cword_synset)
 
     return score
@@ -210,7 +211,6 @@ def predict(word, phrase, filter_function = lambda x : True):
 
     context = get_window_of_context(word, phrase)
     scores = [calculate_synset_score(context, word, phrase, synset) for synset in synsets]
-    # scores_dict = {synset.name(): calculate_synset_score(word, phrase, synset) for synset in synsets}
     
     max_score = max(scores)
     max_idx = scores.index(max_score)
@@ -233,7 +233,15 @@ def predict_eval(word, phrase):
     synsets = list(filter(filter_eval, get_synsets_for_word(word, POS)))
 
     context = get_window_of_context(word, phrase)
+
+    words = []
+    for synset in synsets:
+        words.append(len(" ".join([relation(rel, synset) for rel in RELS["n"]]).split()))
+
     scores = [calculate_synset_score(context, word, phrase, synset) for synset in synsets]
+
+    normalized_scores = [x * max(words)/words[idx] if words[idx] != 0 else 0 
+                        for idx, x in enumerate(scores)]
 
     scores_per_category = {}
     for category, synsetNamesInCategory in WORDNET_MAP[CORPUS].items():
@@ -241,12 +249,24 @@ def predict_eval(word, phrase):
 
         for synset_idx in range(len(synsets)):
             if synsets[synset_idx].name() in synsetNamesInCategory:
-                scores_per_category[category] += scores[synset_idx]
+                scores_per_category[category] += normalized_scores[synset_idx]
     
     winnerScore = -1000
     winnerCategory = None
 
+    resultCategories = {
+        'cord': 0,
+        'division': 0,
+        'formation': 0,
+        'phone': 0,
+        'product': 0,
+        'text': 0
+    }
+
     for categoryName, categoryScore in scores_per_category.items():
+        resultCategories[categoryName] += categoryScore
+
+    for categoryName, categoryScore in resultCategories.items():
         if categoryScore > winnerScore:
             winnerScore = categoryScore
             winnerCategory = categoryName
@@ -263,7 +283,7 @@ def main_eval():
     root = tree.getroot()
     lexelt = root[0]
     
-    limit = 1
+    limit = 100
     instances = [get_instance(instance_el) for instance_el in lexelt if get_instance(instance_el)['senseid'] == 'product']
     shuffle(instances)
 
