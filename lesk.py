@@ -1,15 +1,13 @@
 from eval import get_instance
-import re
 import itertools
 import os
-import re
 import xml.etree.ElementTree as Et
 from random import shuffle
 from nltk.corpus import wordnet
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 from nltk.tokenize import word_tokenize
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 from difflib import SequenceMatcher
 
 
@@ -246,8 +244,7 @@ def main_eval():
     print("Predicted labels:\n", labels_pred)
     labels_true = list(map(lambda instance: instance['senseid'], instances[:limit]))
     print("True labels:\n", labels_true)
-    
-    
+
     print("Classification Report\n", classification_report(labels_true, labels_pred))
     print("Accuracy Score\n", accuracy_score(labels_true, labels_pred))
     print("\nConfusion Matrix\n", confusion_matrix(labels_true, labels_pred))

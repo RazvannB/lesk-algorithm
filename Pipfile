@@ -8,6 +8,9 @@ name = "pypi"
 [packages]
 
 nltk = "*"
+sklearn = "*"
+numpy = "*"
+scipy = "*"
 
 
 [dev-packages]
