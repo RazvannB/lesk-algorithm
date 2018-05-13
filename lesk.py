@@ -254,23 +254,11 @@ def predict_eval(word, phrase):
     winnerScore = -1000
     winnerCategory = None
 
-    resultCategories = {
-        'cord': 0,
-        'division': 0,
-        'formation': 0,
-        'phone': 0,
-        'product': 0,
-        'text': 0
-    }
-
     for categoryName, categoryScore in scores_per_category.items():
-        resultCategories[categoryName] += categoryScore
-
-    for categoryName, categoryScore in resultCategories.items():
         if categoryScore > winnerScore:
             winnerScore = categoryScore
             winnerCategory = categoryName
-    print(scores_per_category)
+
     return winnerCategory
 
 
