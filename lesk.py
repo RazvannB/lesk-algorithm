@@ -92,7 +92,7 @@ def get_window_of_context(word, phrase):
         right_window = WINDOW + (WINDOW - left_window)
     elif target_index + WINDOW >= len(phrase_tokens):
         right_window = len(phrase_tokens) - target_index - 1
-        left_window = WINDOW - right_window
+        left_window = WINDOW + (WINDOW - right_window)
 
     assert left_window is not None and right_window is not None
 
@@ -157,10 +157,10 @@ def score(definition1, definition2):
         definition1_tokens = definition1_tokens[:(match_results.a)] + definition1_tokens[(match_results.a + match_results.size):]
         definition2_tokens = definition2_tokens[:(match_results.b)] + definition2_tokens[(match_results.b + match_results.size):]
 
-    if result > 4:
-        print("Def1: ", repr(original_tok1))
-        print("Def2: ", repr(original_tok2))
-        print("Score:", result)
+    # if result > 4:
+    #     print("Def1: ", repr(original_tok1))
+    #     print("Def2: ", repr(original_tok2))
+    #     print("Score:", result)
 
     return result
 
@@ -188,8 +188,7 @@ def relatedness(synset_A, synset_B):
     return relatedness_score
 
 
-def calculate_synset_score(word_target, phrase, synset_target):
-    context = get_window_of_context(word_target, phrase)
+def calculate_synset_score(context, word_target, phrase, synset_target):
     score = 0
 
     # for each word in context
@@ -197,7 +196,7 @@ def calculate_synset_score(word_target, phrase, synset_target):
         if word_target == word:
             continue
 
-        print("Target word: {}, context word: {}".format(word_target, word))
+        # print("Target word: {}, context word: {}".format(word_target, word))
         # for each synset of a word from context
         for cword_synset in get_synsets_for_word(word):
             score += relatedness(synset_target, cword_synset)
@@ -209,7 +208,8 @@ def predict(word, phrase, filter_function = lambda x : True):
 
     synsets = list(filter(filter_function, get_synsets_for_word(word, POS)))
 
-    scores = [calculate_synset_score(word, phrase, synset) for synset in synsets]
+    context = get_window_of_context(word, phrase)
+    scores = [calculate_synset_score(context, word, phrase, synset) for synset in synsets]
     # scores_dict = {synset.name(): calculate_synset_score(word, phrase, synset) for synset in synsets}
     
     max_score = max(scores)
@@ -220,7 +220,7 @@ def predict(word, phrase, filter_function = lambda x : True):
 
 
 def filter_eval(synset):
-    for labelWN, synset_names in WORDNET_MAP[CORPUS].items():
+    for _, synset_names in WORDNET_MAP[CORPUS].items():
         if synset.name() in synset_names:
             return True
 
@@ -232,7 +232,8 @@ def predict_eval(word, phrase):
 
     synsets = list(filter(filter_eval, get_synsets_for_word(word, POS)))
 
-    scores = [calculate_synset_score(word, phrase, synset) for synset in synsets]
+    context = get_window_of_context(word, phrase)
+    scores = [calculate_synset_score(context, word, phrase, synset) for synset in synsets]
 
     scores_per_category = {}
     for category, synsetNamesInCategory in WORDNET_MAP[CORPUS].items():
@@ -262,7 +263,7 @@ def main_eval():
     root = tree.getroot()
     lexelt = root[0]
     
-    limit = 100
+    limit = 1
     instances = [get_instance(instance_el) for instance_el in lexelt if get_instance(instance_el)['senseid'] == 'product']
     shuffle(instances)
 
