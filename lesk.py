@@ -74,6 +74,7 @@ def tokenize_and_preprocess(phrase):
 
 def get_window_of_context(word, phrase):
     # word = STEMMER.stem(word)
+    word = word.lower()
     phrase_tokens = tokenize_and_preprocess(phrase)
     target_index = phrase_tokens.index(word)
 
@@ -98,7 +99,7 @@ def get_window_of_context(word, phrase):
     return phrase_tokens[target_index - left_window : target_index + right_window + 1]
 
 
-def get_synsets_for_word(s, pos = None):
+def get_synsets_for_word(s, pos=None):
     if pos is None:
         return wordnet.synsets(s)
     return wordnet.synsets(s, pos=pos)
@@ -139,7 +140,10 @@ def score(definition1, definition2):
     result = 0
 
     definition1_tokens = tokenize_and_preprocess(definition1)
+    original_tok1 = definition1_tokens
+
     definition2_tokens = tokenize_and_preprocess(definition2)
+    original_tok2 = definition2_tokens
 
     while True:
         sequence_matcher = SequenceMatcher(None, definition1_tokens, definition2_tokens)
@@ -147,11 +151,16 @@ def score(definition1, definition2):
 
         if match_results.size == 0:
             break
-        
+
         result += match_results.size ** 2
 
         definition1_tokens = definition1_tokens[:(match_results.a)] + definition1_tokens[(match_results.a + match_results.size):]
         definition2_tokens = definition2_tokens[:(match_results.b)] + definition2_tokens[(match_results.b + match_results.size):]
+
+    if result > 4:
+        print("Def1: ", repr(original_tok1))
+        print("Def2: ", repr(original_tok2))
+        print("Score:", result)
 
     return result
 
@@ -160,21 +169,38 @@ def relatedness(synset_A, synset_B):
     relatedness_score = 0
 
     for (relation_0, relation_1) in RELPAIRS:
-        relatedness_score += score(relation(relation_0, synset_A), relation(relation_1, synset_B))
-        relatedness_score += score(relation(relation_1, synset_A), relation(relation_0, synset_B))
+        if relation_0 != relation_1:
+            rel0_A = relation(relation_0, synset_A)
+            rel0_B = relation(relation_0, synset_B)
+            rel1_A = relation(relation_1, synset_A)
+            rel1_B = relation(relation_1, synset_B)
+
+            if rel0_A and rel1_B:
+                relatedness_score += score(rel0_A, rel1_B)
+            if rel1_A and rel0_B:
+                relatedness_score += score(rel1_A, rel0_B)
+        else:
+            rel0_A = relation(relation_0, synset_A)
+            rel1_B = relation(relation_1, synset_B)
+            if rel0_A and rel1_B:
+                relatedness_score += score(rel0_A, rel1_B)
 
     return relatedness_score
 
 
 def calculate_synset_score(word_target, phrase, synset_target):
     context = get_window_of_context(word_target, phrase)
-
-    listOfSynsetLists = [get_synsets_for_word(word) for word in context if word_target != word]
     score = 0
 
-    for synsets in listOfSynsetLists:
-        for synset in synsets:
-            score += relatedness(synset_target, synset)
+    # for each word in context
+    for word in context:
+        if word_target == word:
+            continue
+
+        print("Target word: {}, context word: {}".format(word_target, word))
+        # for each synset of a word from context
+        for cword_synset in get_synsets_for_word(word):
+            score += relatedness(synset_target, cword_synset)
 
     return score
 
@@ -236,7 +262,7 @@ def main_eval():
     root = tree.getroot()
     lexelt = root[0]
     
-    limit = 3
+    limit = 100
     instances = [get_instance(instance_el) for instance_el in lexelt if get_instance(instance_el)['senseid'] == 'product']
     shuffle(instances)
 
