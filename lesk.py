@@ -30,7 +30,7 @@ WORDNET_MAP = {
     'line': {
         'cord': ['line.n.18'],
         'division': ['line.n.29'],
-        'formation': ['line.n.03', 'line.n.01'],
+        'formation': ['line.n.01'],  # 'line.n.03',
         'phone': ['telephone_line.n.02'],
         'product': ['line.n.22'],
         'text': ['note.n.02', 'line.n.05', 'line.n.27']
@@ -236,7 +236,7 @@ def predict_eval(word, phrase):
 
     words = []
     for synset in synsets:
-        words.append(len(" ".join([relation(rel, synset) for rel in RELS["n"]]).split()))
+        words.append(len(" ".join([relation(rel, synset) for rel in RELS[POS]]).split()))
 
     scores = [calculate_synset_score(context, word, phrase, synset) for synset in synsets]
 
@@ -270,7 +270,7 @@ def predict_eval(word, phrase):
         if categoryScore > winnerScore:
             winnerScore = categoryScore
             winnerCategory = categoryName
-
+    print(scores_per_category)
     return winnerCategory
 
 
@@ -284,7 +284,8 @@ def main_eval():
     lexelt = root[0]
     
     limit = 100
-    instances = [get_instance(instance_el) for instance_el in lexelt if get_instance(instance_el)['senseid'] == 'product']
+
+    instances = [get_instance(instance_el) for instance_el in lexelt]  # if get_instance(instance_el)['senseid'] == 'product']
     shuffle(instances)
 
     labels_pred = list(map(lambda instance: predict_eval(instance['target_word'], instance['text']), instances[:limit]))
@@ -297,5 +298,15 @@ def main_eval():
     print("\nConfusion Matrix\n", confusion_matrix(labels_true, labels_pred))
 
 
+def test_wsd():
+
+    target_word = 'line'
+    pos = 'n'
+    example = 'He drew a line on the chart'
+
+    print(predict_eval(target_word, example))
+
+
 if __name__ == '__main__':
     main_eval()
+    # test_wsd()
