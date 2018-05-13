@@ -4,20 +4,24 @@ import itertools
 import os
 import re
 import xml.etree.ElementTree as Et
+from random import shuffle
 from nltk.corpus import wordnet
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
+from nltk.tokenize import word_tokenize
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
+from difflib import SequenceMatcher
 
 
 # Constants
 RELS = {
-    "n": ["hyponyms", "part_meronyms", "hypernyms", "member_holonyms"],
-    "a": ["similar_tos", "also_sees", "attributes"],
-    "v": ["entailments", "causes", "hyponyms"]
+    "n": ["hyponyms", "part_meronyms", "hypernyms", "member_holonyms", "definition", "examples"],
+    "a": ["similar_tos", "also_sees", "attributes", "definition", "example"],
+    "v": ["entailments", "causes", "hyponyms", "definition", "example"]
 }
 POS = "n" # n, a, v
-RELPAIRS = list(itertools.combinations(RELS[POS], 2))
-STOPWORDS = stopwords.words('english')
+RELPAIRS = list(itertools.combinations(RELS[POS], 2)) + list(map(lambda rel: (rel, rel), RELS[POS]))
+STOPWORDS = set(stopwords.words('english'))
 STEMMER = PorterStemmer()
 WINDOW = 3
 
@@ -26,11 +30,12 @@ FILENAME = "line-n.train.xml"
 
 WORDNET_MAP = {
     'line': {
-        'cord': ['line.n.18'],
+        # 'cord': ['line.n.18'],
         'division': ['line.n.29'],
         'formation': ['line.n.03', 'line.n.01'],
         'phone': ['telephone_line.n.02'],
         'product': ['line.n.22'],
+        'product': ['merchandise.n.01'],
         'text': ['note.n.02', 'line.n.05', 'line.n.27']
     },
     'hard': {
@@ -55,172 +60,137 @@ WORDNET_MAP = {
 }
 
 
-# Helper functions
-def remove_non_alphanumeric(s):
-    return re.sub(r'\W+ ', ' ', s).lower()
+def tokenize_and_preprocess(phrase):
+    # Tokenize
+    words = word_tokenize(phrase)
+    # Remove punctuation
+    words = [word for word in words if word.isalpha()]
+    # Lowercase
+    words = [word.lower() for word in words]
+    # Remove stop words
+    words = [word for word in words if not word in STOPWORDS]
+    # Stem
+    # words = [STEMMER.stem(word) for word in words]
+
+    return words
 
 
-def cannot_be_added(s):
-    # "neither the first nor the last word is a function word, that is a pronoun, preposition, article or conjunction"
-    return s in STOPWORDS
+def get_window_of_context(word, phrase):
+    # word = STEMMER.stem(word)
+    phrase_tokens = tokenize_and_preprocess(phrase)
+    target_index = phrase_tokens.index(word)
+
+    left_window = None
+    right_window = None
+
+    if target_index - WINDOW >= 0 and target_index + WINDOW < len(phrase_tokens):
+        left_window = WINDOW
+        right_window = WINDOW
+    elif target_index - WINDOW < 0 and target_index + WINDOW >= len(phrase_tokens):
+        left_window = target_index
+        right_window = len(phrase_tokens) - target_index - 1
+    elif target_index - WINDOW < 0:
+        left_window = target_index
+        right_window = WINDOW + (WINDOW - left_window)
+    elif target_index + WINDOW >= len(phrase_tokens):
+        right_window = len(phrase_tokens) - target_index - 1
+        left_window = WINDOW - right_window
+
+    assert left_window is not None and right_window is not None
+
+    return phrase_tokens[target_index - left_window : target_index + right_window + 1]
 
 
-def string_matching(first, second):
-    result = []
-    matched = ""
-    current = ""
-    first = remove_non_alphanumeric(first)
-    first = " ".join([STEMMER.stem(word) for word in first.split()])
-    second = remove_non_alphanumeric(second)
-    second = " ".join([STEMMER.stem(word) for word in second.split()])
-
-    for word in first.split():
-        # check if first word can be added
-        if current == "" and cannot_be_added(word):
-            continue
-
-        current += word
-
-        if current in second:
-            matched = current
-            current += " "
-        elif len(matched) > 0:
-            # check if last word can be added
-            while cannot_be_added(matched.split()[-1]):
-                matched = " ".join(matched.split()[:-1])
-
-            result.append(matched)
-            second.replace(matched, "", 1)
-            current = ""
-            matched = ""
-
-            # for in loop will lose current word
-            if word in second and not cannot_be_added(word):
-                matched = word
-                current = word + " "
-        else:
-            current = ""
-            
-    return result
-
-
-def no_of_words(s):
-    return len(s.split())
-
-
-def get_window_of_context(wordArg, phraseArg):
-    phrase = phraseArg.split()
-    target_index = phrase.index(wordArg)
-
-    actual_window_left = WINDOW
-    actual_window_right = WINDOW
-
-    if target_index - WINDOW < 0:
-        actual_window_left = target_index
-        actual_window_right += abs(target_index - WINDOW)
-    
-    if target_index + actual_window_right >= len(phrase):
-        actual_window_right = len(phrase) - target_index - 1
-
-    if actual_window_right < WINDOW:
-        diff = WINDOW - actual_window_right
-        start_index = max(0, target_index - actual_window_left - diff)
-        actual_window_left = target_index - start_index
-
-    context = phrase[target_index - actual_window_left : target_index + actual_window_right + 1]
-    return [word for word in context if word not in STOPWORDS]
-
-
-def list_senses(context):
-    return [word_senses(word) for word in context]
-
-
-# Wordnet access
-def synset(s, pos=POS):
+def get_synsets_for_word(s, pos = None):
+    if pos is None:
+        return wordnet.synsets(s)
     return wordnet.synsets(s, pos=pos)
 
 
-def definitions(synsets):
-    return " ".join([defin.definition() for defin in synsets])
+def combine_definitions(synsets):
+    return " ".join([synset.definition() for synset in synsets])
 
 
-def relation(rel, A):
+def relation(rel, synset):
     if rel == "hyponyms":
-        return definitions(A.hyponyms())
+        return combine_definitions(synset.hyponyms())
     elif rel == "part_meronyms":
-        return definitions(A.part_meronyms())
+        return combine_definitions(synset.part_meronyms())
     elif rel == "hypernyms":
-        return definitions(A.hypernyms())
+        return combine_definitions(synset.hypernyms())
     elif rel == "member_holonyms":
-        return definitions(A.member_holonyms())
+        return combine_definitions(synset.member_holonyms())
     elif rel == "similar_tos":
-        return definitions(A.similar_tos())
+        return combine_definitions(synset.similar_tos())
     elif rel == "also_sees":
-        return definitions(A.also_sees())
+        return combine_definitions(synset.also_sees())
     elif rel == "attributes":
-        return definitions(A.attributes())
+        return combine_definitions(synset.attributes())
     elif rel == "entailments":
-        return definitions(A.entailments())
+        return combine_definitions(synset.entailments())
     elif rel == "causes":
-        return definitions(A.causes())
-    elif rel == "gloss":
-        return [A.definition()]
-    elif rel == "example":
-        return " ".join(A.examples())
+        return combine_definitions(synset.causes())
+    elif rel == "definition":
+        return synset.definition()
+    elif rel == "examples":
+        return " ".join(synset.examples())
     else:
         return None
 
 
-def word_senses(word):
-    return synset(word)
-
-
-# Lesk's algorithm (1986)
 def score(definition1, definition2):
     result = 0
-    for match in string_matching(definition1, definition2):
-        result += no_of_words(match) ** 2
-    return result
 
+    definition1_tokens = tokenize_and_preprocess(definition1)
+    definition2_tokens = tokenize_and_preprocess(definition2)
 
-def relatedness(A, B):
-    result = 0
+    while True:
+        sequence_matcher = SequenceMatcher(None, definition1_tokens, definition2_tokens)
+        match_results = sequence_matcher.find_longest_match(0, len(definition1_tokens), 0, len(definition2_tokens))
 
-    for pair in RELPAIRS:
-        result += score(relation(pair[0], A), relation(pair[1], B))
-        result += score(relation(pair[1], A), relation(pair[0], B))
-    return result
+        if match_results.size == 0:
+            break
+        
+        result += match_results.size ** 2
 
-
-def scoresense(word, phrase, crtSense):
-    context = get_window_of_context(word, phrase)
-    senses = list_senses(context)
-    target_index = context.index(word)
-
-    result = 0
-    for idx, other_senses in enumerate(senses):
-        if idx == target_index:
-            continue
-
-        for sense in other_senses:
-            result += relatedness(crtSense, sense)
+        definition1_tokens = definition1_tokens[:(match_results.a)] + definition1_tokens[(match_results.a + match_results.size):]
+        definition2_tokens = definition2_tokens[:(match_results.b)] + definition2_tokens[(match_results.b + match_results.size):]
 
     return result
 
 
-def predict(word, phrase, filter_function = None):
+def relatedness(synset_A, synset_B):
+    relatedness_score = 0
 
-    if filter_function is None:
-        filter_function = lambda x : True
+    for (relation_0, relation_1) in RELPAIRS:
+        relatedness_score += score(relation(relation_0, synset_A), relation(relation_1, synset_B))
+        relatedness_score += score(relation(relation_1, synset_A), relation(relation_0, synset_B))
 
-    synsets = list(filter(filter_function, synset(word)))
+    return relatedness_score
 
-    scores = [scoresense(word, phrase, sense) for sense in synsets]
+
+def calculate_synset_score(word_target, phrase, synset_target):
+    context = get_window_of_context(word_target, phrase)
+
+    listOfSynsetLists = [get_synsets_for_word(word) for word in context if word_target != word]
+    score = 0
+
+    for synsets in listOfSynsetLists:
+        for synset in synsets:
+            score += relatedness(synset_target, synset)
+
+    return score
+
+
+def predict(word, phrase, filter_function = lambda x : True):
+
+    synsets = list(filter(filter_function, get_synsets_for_word(word, POS)))
+
+    scores = [calculate_synset_score(word, phrase, synset) for synset in synsets]
+    # scores_dict = {synset.name(): calculate_synset_score(word, phrase, synset) for synset in synsets}
+    
     max_score = max(scores)
     max_idx = scores.index(max_score)
-
-    print(synsets)
-
     winner = synsets[max_idx]
 
     return winner.name(), winner.definition()
@@ -235,14 +205,29 @@ def filter_eval(synset):
 
 
 def predict_eval(word, phrase):
-    predSynset, _ = predict(word, phrase, filter_eval)
-    print(predSynset)
+    print(phrase)
 
-    for labelWN, synset_names in WORDNET_MAP[CORPUS].items():
-        if predSynset in synset_names:
-            return labelWN
+    synsets = list(filter(filter_eval, get_synsets_for_word(word, POS)))
 
-    return None
+    scores = [calculate_synset_score(word, phrase, synset) for synset in synsets]
+
+    scores_per_category = {}
+    for category, synsetNamesInCategory in WORDNET_MAP[CORPUS].items():
+        scores_per_category[category] = 0
+
+        for synset_idx in range(len(synsets)):
+            if synsets[synset_idx].name() in synsetNamesInCategory:
+                scores_per_category[category] += scores[synset_idx]
+    
+    winnerScore = -1000
+    winnerCategory = None
+
+    for categoryName, categoryScore in scores_per_category.items():
+        if categoryScore > winnerScore:
+            winnerScore = categoryScore
+            winnerCategory = categoryName
+
+    return winnerCategory
 
 
 def main_eval():
@@ -254,18 +239,19 @@ def main_eval():
     root = tree.getroot()
     lexelt = root[0]
     
-    instances = [get_instance(instance_el) for instance_el in lexelt]
+    limit = 3
+    instances = [get_instance(instance_el) for instance_el in lexelt if get_instance(instance_el)['senseid'] == 'product']
+    shuffle(instances)
+
+    labels_pred = list(map(lambda instance: predict_eval(instance['target_word'], instance['text']), instances[:limit]))
+    print("Predicted labels:\n", labels_pred)
+    labels_true = list(map(lambda instance: instance['senseid'], instances[:limit]))
+    print("True labels:\n", labels_true)
     
-    word = instances[1000]["target_word"]
-    label = instances[1000]["senseid"]
-    phrase = instances[1000]["text"]
-
-    pred = predict_eval(word, phrase)
-    print(word)
-    print(phrase)
-    print(pred) 
-    print(label)
-
+    
+    print("Classification Report\n", classification_report(labels_true, labels_pred))
+    print("Accuracy Score\n", accuracy_score(labels_true, labels_pred))
+    print("\nConfusion Matrix\n", confusion_matrix(labels_true, labels_pred))
 
 
 if __name__ == '__main__':

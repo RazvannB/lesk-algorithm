@@ -12,7 +12,7 @@ def get_instance(instance_el):
 
     re_tword = re.compile(r'(?:<head>)(.*)(?:</head>)')
     re_sentence = re.compile(r'(?:<s>)(.*)(?:</s>)')
-    re_tokens = re.compile(r'[\w\,\.\']+')
+    re_tokens = re.compile(r'\w+')
 
     instance = instance_el[0].attrib
     instance['instanceid'] = instance_el.attrib.get('id', '')
