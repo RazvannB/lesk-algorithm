@@ -13,9 +13,9 @@ from difflib import SequenceMatcher
 
 # Constants
 RELS = {
-    "n": ["hyponyms", "part_meronyms"],
+    "n": ["hyponyms", "part_meronyms", "definition", "examples"],
     "a": ["similar_tos", "also_sees", "attributes"],
-    "v": ["entailments", "causes", "hyponyms"]
+    "v": ["entailments", "causes", "hyponyms", "definition", "examples"]
 }
 POS = "n" # n, a, v
 RELPAIRS = list(itertools.combinations(RELS[POS], 2)) + list(map(lambda rel: (rel, rel), RELS[POS]))
@@ -38,7 +38,7 @@ WORDNET_MAP = {
     'hard': {
         'HARD1': ['difficult.a.01'],
         'HARD2': ['arduous.s.01'],
-        'HARD3': ['hard.r.07']
+        'HARD3': ['hard.a.03']
     },
     'serve': {
         'SERVE10': ['serve.v.06'],
@@ -271,14 +271,14 @@ def main_eval():
     root = tree.getroot()
     lexelt = root[0]
     
-    limit = 100
+    # limit = 10
 
     instances = [get_instance(instance_el) for instance_el in lexelt]  # if get_instance(instance_el)['senseid'] == 'product']
     shuffle(instances)
 
-    labels_pred = list(map(lambda instance: predict_eval(instance['target_word'], instance['text']), instances[:limit]))
+    labels_pred = list(map(lambda instance: predict_eval(instance['target_word'], instance['text']), instances))
     print("Predicted labels:\n", labels_pred)
-    labels_true = list(map(lambda instance: instance['senseid'], instances[:limit]))
+    labels_true = list(map(lambda instance: instance['senseid'], instances))
     print("True labels:\n", labels_true)
 
     print("Classification Report\n", classification_report(labels_true, labels_pred))
