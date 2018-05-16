@@ -30,7 +30,7 @@ WORDNET_MAP = {
     'line': {
         'cord': ['line.n.18'],
         'division': ['line.n.29'],
-        'formation': ['line.n.01'],  # 'line.n.03',
+        'formation': ['line.n.01'],
         'phone': ['telephone_line.n.02'],
         'product': ['line.n.22'],
         'text': ['note.n.02', 'line.n.05', 'line.n.27']
@@ -67,7 +67,7 @@ def tokenize_and_preprocess(phrase):
     # Remove stop words
     words = [word for word in words if not word in STOPWORDS]
     # Stem
-    # words = [STEMMER.stem(word) for word in words]
+    words = [STEMMER.stem(word) for word in words]
 
     words = [word for word in words if len(word) >= 3]
 
@@ -75,7 +75,6 @@ def tokenize_and_preprocess(phrase):
 
 
 def get_window_of_context(word, phrase):
-    # word = STEMMER.stem(word)
     word = word.lower()
     phrase_tokens = tokenize_and_preprocess(phrase)
     target_index = phrase_tokens.index(word.lower())
@@ -142,10 +141,8 @@ def score(definition1, definition2):
     result = 0
 
     definition1_tokens = tokenize_and_preprocess(definition1)
-    original_tok1 = definition1_tokens
 
     definition2_tokens = tokenize_and_preprocess(definition2)
-    original_tok2 = definition2_tokens
 
     while True:
         sequence_matcher = SequenceMatcher(None, definition1_tokens, definition2_tokens)
@@ -158,11 +155,6 @@ def score(definition1, definition2):
 
         definition1_tokens = definition1_tokens[:(match_results.a)] + definition1_tokens[(match_results.a + match_results.size):]
         definition2_tokens = definition2_tokens[:(match_results.b)] + definition2_tokens[(match_results.b + match_results.size):]
-
-    # if result > 4:
-    #     print("Def1: ", repr(original_tok1))
-    #     print("Def2: ", repr(original_tok2))
-    #     print("Score:", result)
 
     return result
 
@@ -288,13 +280,12 @@ def main_eval():
 
 def test_wsd():
 
-    target_word = 'line'
-    pos = 'n'
-    example = 'He drew a line on the chart'
+    target_word = 'doctor'
+    example = 'The doctor defended his thesis in front of the professors'
 
-    print(predict_eval(target_word, example))
+    print(predict(target_word, example))
 
 
 if __name__ == '__main__':
-    main_eval()
-    # test_wsd()
+    # main_eval()
+    test_wsd()
